@@ -53,7 +53,7 @@ jobs:
       - name: Install packaging and AOT dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends clang lld musl-tools musl-dev zlib1g-dev fakeroot file xz-utils
+          sudo apt-get install -y --no-install-recommends binutils fakeroot file xz-utils curl
           if ! command -v ipkg-build >/dev/null 2>&1; then
             sudo curl -fsSL \
               https://raw.githubusercontent.com/openwrt/openwrt/master/scripts/ipkg-build \
@@ -76,20 +76,54 @@ jobs:
           fi
           echo "value=${version}" >> "${GITHUB_OUTPUT}"
 
-      - name: Publish NativeAOT binary
+      - name: Publish NativeAOT binary in Alpine
         shell: bash
         run: |
           set -euo pipefail
           out_dir="${{ runner.temp }}/publish/${{ matrix.rid }}"
           mkdir -p "${out_dir}"
-          dotnet publish "${PROJECT_DIR}/${PROJECT_FILE}" \
-            -c Release \
-            -r "${{ matrix.rid }}" \
-            -p:PublishAot=true \
-            -p:SelfContained=true \
-            -p:LinkerFlavor=lld \
-            -o "${out_dir}" \
-            -v minimal
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v "${GITHUB_WORKSPACE}":/src \
+            -v "${out_dir}":/out \
+            -w /src \
+            mcr.microsoft.com/dotnet/sdk:10.0-alpine \
+            sh -lc '
+              set -e
+              apk add --no-cache clang lld musl-dev zlib-dev build-base
+              dotnet publish "'"${PROJECT_DIR}/${PROJECT_FILE}"'" \
+                -c Release \
+                -r "'"${{ matrix.rid }}"'" \
+                -p:PublishAot=true \
+                -p:SelfContained=true \
+                -p:LinkerFlavor=lld \
+                -o /out \
+                -v minimal
+            '
+
+      - name: Verify musl binary interpreter
+        shell: bash
+        run: |
+          set -euo pipefail
+          out_dir="${{ runner.temp }}/publish/${{ matrix.rid }}"
+          bin_path=""
+          if [[ -f "${out_dir}/HomeNet-Sentinel" ]]; then
+            bin_path="${out_dir}/HomeNet-Sentinel"
+          elif [[ -f "${out_dir}/HomeNetSentinel" ]]; then
+            bin_path="${out_dir}/HomeNetSentinel"
+          else
+            echo "Cannot find output binary in ${out_dir}" >&2
+            ls -lah "${out_dir}"
+            exit 1
+          fi
+
+          if readelf -l "${bin_path}" | grep -q "Requesting program interpreter"; then
+            readelf -l "${bin_path}" | grep -q "ld-musl" || {
+              echo "Binary is not linked against musl loader" >&2
+              readelf -l "${bin_path}"
+              exit 1
+            }
+          fi
 
       - name: Prepare binary for packer
         id: bin

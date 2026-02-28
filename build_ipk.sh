@@ -137,6 +137,16 @@ exit 0
 EOF
 chmod 0755 "$CONTROL_DIR/postinst"
 
+cat > "$CONTROL_DIR/prerm" <<'EOF'
+#!/bin/sh
+if [ -x /etc/init.d/homenet-sentinel ]; then
+    /etc/init.d/homenet-sentinel stop >/dev/null 2>&1 || true
+    /etc/init.d/homenet-sentinel disable >/dev/null 2>&1 || true
+fi
+exit 0
+EOF
+chmod 0755 "$CONTROL_DIR/prerm"
+
 if [ -f "$PKG_DIR/etc/config/homenet-sentinel" ]; then
   cat > "$CONTROL_DIR/conffiles" <<'EOF'
 /etc/config/homenet-sentinel
