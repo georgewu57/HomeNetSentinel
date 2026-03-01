@@ -38,7 +38,7 @@ jobs:
             ipk_arch: x86_64
             runner: ubuntu-latest
           - rid: linux-musl-arm64
-            ipk_arch: aarch64_generic
+            ipk_arch: aarch64_cortex-a53
             runner: ubuntu-24.04-arm
 
     steps:
